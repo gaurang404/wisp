@@ -1,6 +1,6 @@
 # Developing Wisp
 
-Native SwiftUI + URLSession, Swift Package Manager, no third-party dependencies. macOS 14+, Xcode 16+.
+Native SwiftUI + URLSession, Swift Package Manager. The only dependency is [Sparkle](https://sparkle-project.org) for in-app updates (fetched automatically by SwiftPM). macOS 14+, Xcode 16+.
 
 ## Build & run
 
@@ -28,6 +28,18 @@ Repository secrets it needs:
 | `NOTARY_KEY_P8_BASE64` | App Store Connect API key (.p8), `base64 -i AuthKey_XXXX.p8` |
 | `NOTARY_KEY_ID` | That key's ID |
 | `NOTARY_ISSUER_ID` | Issuer ID from App Store Connect → Users and Access → Integrations |
+| `SPARKLE_PRIVATE_KEY` | Update-signing key: the contents of the file from `generate_keys -x` (see below) |
+
+### Update signing (Sparkle)
+
+Updates are EdDSA-signed. The public key is committed in `packaging/sparkle-public-key.txt`; the private key lives in your login Keychain and in the `SPARKLE_PRIVATE_KEY` secret. Created once with:
+
+```sh
+.build/artifacts/sparkle/Sparkle/bin/generate_keys            # prints the public key
+.build/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle-private.key   # export for CI, then delete the file
+```
+
+Never lose or change the private key: installed copies only accept updates signed with it. The feed is `https://wisp.build/appcast.xml`, redirected (wisp-site `_redirects`) to the latest release's `appcast.xml`.
 
 Signed release build locally:
 

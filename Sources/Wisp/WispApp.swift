@@ -24,6 +24,9 @@ struct WispApp: App {
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1280, height: 800)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton(updater: Updater.shared)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Request") { store.newRequest() }.keyboardShortcut("n")
                 Divider()

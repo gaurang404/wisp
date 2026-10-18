@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- **Automatic updates.** Wisp checks for new versions in the background and can install them with one click (*Wisp → Check for Updates…*). Updates are signed and verified before installing.
+
 ## 1.0.0 — unreleased
 
 First release.

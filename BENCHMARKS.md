@@ -8,7 +8,7 @@ Measured on an Apple M5 Pro, macOS 27, Wisp 1.0 release build. Medians of repeat
 |---|---:|
 | Download (zip) | **2.9 MB** — universal (Apple silicon + Intel) |
 | App on disk | **5.1 MB** (about 2 MB of code per architecture, plus the icon) |
-| Third-party libraries | **none** — only Apple's system frameworks |
+| Third-party libraries | **one** — [Sparkle](https://sparkle-project.org), for in-app updates |
 
 ## Startup and memory
 

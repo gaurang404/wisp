@@ -10,6 +10,8 @@
 #   SIGN_IDENTITY    "Developer ID Application: Your Name (TEAMID)"  → hardened-runtime signing
 #   NOTARY_PROFILE   keychain profile from `xcrun notarytool store-credentials`  → notarize + staple
 #     or NOTARY_KEY_ID + NOTARY_ISSUER + NOTARY_KEY_PATH (App Store Connect API key, used in CI)
+#   SPARKLE_PRIVATE_KEY_FILE   EdDSA private key (from Sparkle's generate_keys -x)  → signed build/appcast.xml
+# The Sparkle public key lives in packaging/sparkle-public-key.txt; without it, in-app updates are disabled.
 set -e
 cd "$(dirname "$0")"
 
@@ -23,8 +25,20 @@ echo "Building Wisp $VERSION ($BUILD)"
 # Universal binary: Apple silicon + Intel.
 swift build -c release --arch arm64 --arch x86_64
 rm -rf build && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/Wisp" "$APP/Contents/MacOS/Wisp"
+BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+cp "$BIN_DIR/Wisp" "$APP/Contents/MacOS/Wisp"
+install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/Wisp"
 strip -x "$APP/Contents/MacOS/Wisp"
+
+# Sparkle (in-app updates). Wisp isn't sandboxed, so Sparkle's XPC services aren't needed (per Sparkle's docs).
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+FW="$APP/Contents/Frameworks/Sparkle.framework"
+# Build-time-only parts (headers, module maps) and the sandbox-only XPC services aren't needed at runtime.
+rm -rf "$FW/Versions/B/XPCServices" "$FW/XPCServices" \
+       "$FW/Versions/B/Headers" "$FW/Headers" "$FW/Versions/B/PrivateHeaders" "$FW/PrivateHeaders" \
+       "$FW/Versions/B/Modules" "$FW/Modules"
+SPARKLE_PUBLIC_KEY=$(cat packaging/sparkle-public-key.txt 2>/dev/null | tr -d '[:space:]')
 lipo -info "$APP/Contents/MacOS/Wisp" | grep -q "x86_64 arm64\|arm64 x86_64" || { echo "not universal"; exit 1; }
 
 ICONSET=build/AppIcon.iconset
@@ -50,6 +64,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>SUFeedURL</key><string>https://wisp.build/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
+  <key>SUEnableAutomaticChecks</key><true/>
   <key>NSAppTransportSecurity</key>
   <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
 </dict>
@@ -58,13 +75,22 @@ PLIST
 
 # Signing: Developer ID + hardened runtime for releases, ad-hoc otherwise.
 # (Wisp isn't sandboxed and needs no entitlements: network, Keychain and the OAuth loopback all work under hardened runtime.)
-if [ -n "$SIGN_IDENTITY" ]; then
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
-  codesign --verify --strict --verbose=2 "$APP"
-else
-  codesign --force --sign - "$APP"
-  echo "note: ad-hoc signed (set SIGN_IDENTITY for a Developer ID build)"
-fi
+# Inside-out: Sparkle's helpers, the framework, then the app.
+sign() {
+  if [ -n "$SIGN_IDENTITY" ]; then
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$1"
+  else
+    codesign --force --sign - "$1"
+  fi
+}
+SPARKLE_FW="$APP/Contents/Frameworks/Sparkle.framework"
+sign "$SPARKLE_FW/Versions/B/Autoupdate"
+sign "$SPARKLE_FW/Versions/B/Updater.app"
+sign "$SPARKLE_FW"
+sign "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
+if [ -z "$SIGN_IDENTITY" ]; then echo "note: ad-hoc signed (set SIGN_IDENTITY for a Developer ID build)"; fi
+if [ -z "$SPARKLE_PUBLIC_KEY" ]; then echo "note: no packaging/sparkle-public-key.txt — in-app updates disabled in this build"; fi
 
 # DMG: the app plus an Applications shortcut, for drag-to-install.
 DMG=build/Wisp-$VERSION.dmg
@@ -105,6 +131,30 @@ fi
 # ZIP of the (stapled) app — used by Homebrew and in-app updates.
 ZIP=build/Wisp-$VERSION.zip
 ditto -c -k --keepParent "$APP" "$ZIP"
+
+# Sparkle appcast: one item pointing at this release's zip, EdDSA-signed.
+if [ -n "$SPARKLE_PRIVATE_KEY_FILE" ]; then
+  SIG=$(.build/artifacts/sparkle/Sparkle/bin/sign_update --ed-key-file "$SPARKLE_PRIVATE_KEY_FILE" "$ZIP")
+  cat > build/appcast.xml <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Wisp</title>
+    <link>https://wisp.build/</link>
+    <item>
+      <title>Wisp $VERSION</title>
+      <pubDate>$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")</pubDate>
+      <sparkle:version>$BUILD</sparkle:version>
+      <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://github.com/gaurang404/wisp/releases/tag/v$VERSION</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/gaurang404/wisp/releases/download/v$VERSION/Wisp-$VERSION.zip" $SIG type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
+XML
+  echo "Wrote build/appcast.xml"
+fi
 
 echo "Built $APP ($(du -sh "$APP" | cut -f1)), $DMG ($(du -h "$DMG" | cut -f1)), $ZIP ($(du -h "$ZIP" | cut -f1))"
 
