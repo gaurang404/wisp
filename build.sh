@@ -84,9 +84,18 @@ notarize() {
     return 1
   fi
 }
+# Stapling fetches Apple's ticket over the network; right after acceptance it can briefly fail (error 65/68).
+staple() {
+  for attempt in 1 2 3 4 5; do
+    xcrun stapler staple "$1" && return 0
+    echo "staple attempt $attempt failed for $1, retrying in $((attempt * 15))s…"
+    sleep $((attempt * 15))
+  done
+  return 1
+}
 if [ -n "$SIGN_IDENTITY" ] && notarize "$DMG"; then
-  xcrun stapler staple "$DMG"
-  xcrun stapler staple "$APP"          # so the zip below carries the ticket too
+  staple "$DMG"
+  staple "$APP"                        # so the zip below carries the ticket too
   spctl --assess --type open --context context:primary-signature -v "$DMG"
   echo "Notarized and stapled"
 elif [ -n "$SIGN_IDENTITY" ]; then

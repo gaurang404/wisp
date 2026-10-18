@@ -60,9 +60,14 @@ jobs:
           cp "build/Wisp-$V.dmg" build/Wisp.dmg
           cp "build/Wisp-$V.zip" build/Wisp.zip
           shasum -a 256 "build/Wisp-$V.dmg" "build/Wisp-$V.zip" > build/SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" \
-            "build/Wisp-$V.dmg" "build/Wisp-$V.zip" build/Wisp.dmg build/Wisp.zip build/SHA256SUMS.txt \
-            --title "Wisp $V" --generate-notes
+          FILES="build/Wisp-$V.dmg build/Wisp-$V.zip build/Wisp.dmg build/Wisp.zip build/SHA256SUMS.txt"
+          # Works whether or not a release for this tag already exists (e.g. created on github.com, or a re-run).
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $FILES --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "Wisp $V" --draft=false
+          else
+            gh release create "$GITHUB_REF_NAME" $FILES --title "Wisp $V" --generate-notes
+          fi
 
       - name: Clean up keychain
         if: always()
