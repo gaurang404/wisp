@@ -1,10 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+- **Named API keys.** Keep several keys for the same API and switch between them from the toolbar, which shows the key in use. Pasting a request with a different key for the same host keeps the existing key instead of overwriting it. Keys can be renamed and deleted in *Manage Keys…*; deleting one removes it from the Keychain.
+
 ## 1.0.1
 
 - **Automatic updates.** Wisp checks for new versions in the background and can install them with one click (*Wisp → Check for Updates…*). Updates are signed and verified before installing.
 
-## 1.0.0 — unreleased
+## 1.0.0
 
 First release.
 

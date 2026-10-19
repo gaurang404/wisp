@@ -41,6 +41,7 @@
 
 - **Pasted secrets go to the Keychain.** Tokens in a pasted request move into Keychain-backed variables, scoped to their API's host, and are scrubbed from history.
 - **One environment per API,** selected automatically from the URL's host, with auth and headers inherited by every request.
+- **Several named keys per API** — switch between them from the toolbar and always see which one is in use.
 - **OpenAPI import from a docs URL** — Wisp finds the spec behind Swagger UI, Redoc, Scalar or Stoplight pages.
 - **Schema-aware GraphQL** with a query builder for operations, fields and typed inputs.
 - **Failures explained:** auth challenges, HTML error pages and redirect chains are decoded for you.
@@ -52,6 +53,10 @@
 
 - **Secret detection on paste.** Bearer, Basic and API-key headers, auth fields and query keys (`api_key`, `access_token`) are recognised. One click moves them into Keychain-backed variables, rewrites the URL to `{{baseUrl}}/…`, and removes the literal value from history and saved requests.
 - **Host-scoped environments.** Each environment belongs to its API's host. Opening a URL for that host selects it, and requests without their own auth inherit its auth and default headers. They are never attached to requests for another host — including cross-host redirects.
+- **Named keys.** Keep several credentials for the same API — a personal key, a team key, a test account — and switch between them from the toolbar, which always shows the key in use. Pasting a request with a different key for the same host saves it alongside the existing one instead of replacing it. Rename or delete keys in *Manage Keys…*; a deleted key is removed from the Keychain and never sent again.
+
+  <img src="docs/images/keys.jpg" alt="Wisp's Manage Keys window with two named keys for the same API, one marked in use">
+
 - **OAuth 2.** Authorization Code with PKCE over a local loopback redirect, Client Credentials and Password grants. Tokens are cached per client and refreshed automatically.
 - **Variables everywhere.** `{{name}}` works in the URL, params, headers, body and auth. Mark a value secret to keep it in the Keychain.
 

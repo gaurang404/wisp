@@ -9,6 +9,7 @@ extension View {
             let env = ProcessInfo.processInfo.environment
             guard let out = env["WISP_SNAPSHOT"] else { return }
             if env["WISP_LIGHT"] != nil { NSApp.appearance = NSAppearance(named: .aqua) }
+            if env["WISP_DARK"] != nil { NSApp.appearance = NSAppearance(named: .darkAqua) }
             if let size = env["WISP_WINDOW"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
                let w = NSApp.windows.first(where: { $0.isVisible }) {
                 w.setFrame(NSRect(x: 80, y: 80, width: size[0], height: size[1]), display: true)
@@ -35,6 +36,16 @@ extension View {
             if env["WISP_DEMO_GQL"] != nil { store.tryGraphQLDemo() }
             if let url = env["WISP_DEMO_URL"] { store.newRequest(); store.current.url = url }
             if env["WISP_DEMO_REUSE"] != nil { store.makeReusable() }
+            if let url = env["WISP_DEMO_KEYS_URL"] {   // two named keys for one API (needs WISP_DATA_DIR)
+                for name in ["personal", "team"] {
+                    store.importCurl("curl '\(url)' -H 'Authorization: Bearer sk_demo_\(name)_4f9a2c7e81b3'")
+                    store.makeReusable()
+                }
+                if let i = store.envs.firstIndex(where: { $0.id == store.activeEnvID }), store.envs[i].keys.count == 2 {
+                    store.envs[i].keys[0].name = "Personal"
+                    store.envs[i].keys[1].name = "Team"
+                }
+            }
             if let url = env["WISP_DEMO_URL3"] {   // keeps the active environment
                 store.newRequest()
                 store.current.url = url
@@ -62,6 +73,7 @@ extension View {
             case "import": store.sheet = .importer
             case "jwt": store.sheet = .jwt(env["WISP_DEMO_JWT"] ?? "")
             case "gql": store.sheet = .graphQLBuilder
+            case "keys": store.sheet = .keys
             default: break
             }
             try? await Task.sleep(for: .seconds(Double(env["WISP_SNAPSHOT_DELAY"] ?? "4") ?? 4))

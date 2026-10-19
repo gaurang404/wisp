@@ -9,8 +9,19 @@ struct SecretBlob: Codable, Equatable {
 }
 
 enum Secrets {
-    static let service = "build.wisp.app"
-    static let account = "secrets"
+    static let service: String = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["WISP_DATA_DIR"] != nil { return "build.wisp.app.debug" }
+        #endif
+        return "build.wisp.app"
+    }()
+    /// Debug runs with WISP_DATA_DIR get their own item per data dir, so test runs never overwrite each other.
+    static let account: String = {
+        #if DEBUG
+        if let dir = ProcessInfo.processInfo.environment["WISP_DATA_DIR"] { return dir }
+        #endif
+        return "secrets"
+    }()
 
     private static var base: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,

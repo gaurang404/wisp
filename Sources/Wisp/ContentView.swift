@@ -38,6 +38,9 @@ struct ContentView: View {
                 }
                 .fixedSize()
                 .help("Active environment — use {{name}} anywhere in a request")
+                if let env = store.activeEnv, !env.keys.isEmpty || !env.credentials.isEmpty {
+                    KeyMenu(env: env)
+                }
                 Button { store.sheet = .code } label: { Label("Code", systemImage: "chevron.left.forwardslash.chevron.right") }
                     .help("Generate code — cURL, fetch, Python, Laravel, Go… (⌥⌘C)")
                 Menu {
@@ -58,6 +61,7 @@ struct ContentView: View {
             case .code: CodeSheet()
             case .importer: ImportSheet()
             case .environments: EnvEditor()
+            case .keys: KeyManager()
             case .jwt(let token): JWTSheet(token: token)
             case .graphQLBuilder: GraphQLBuilderSheet()
             }
@@ -112,7 +116,7 @@ struct URLBar: View {
                     .fontWeight(.semibold)
                 if store.current.auth.kind == .none, let env = store.activeEnv, env.auth.kind != .none,
                    store.applies(env, to: store.current) {
-                    Label("Auth from \(env.name)", systemImage: "key.fill")
+                    Label("Auth from \(env.name)" + (env.keyInUse.map { " · \($0.name)" } ?? ""), systemImage: "key.fill")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         .help("This request has no auth of its own, so it uses \(env.name)'s \(env.auth.kind.rawValue) auth.")
                 }
@@ -231,5 +235,36 @@ private struct ReuseHint: View {
         .font(.system(size: 12))
         .lineLimit(1)
         .padding(.horizontal, 4)
+    }
+}
+
+/// Which saved key the active environment sends; switch, save or manage keys.
+private struct KeyMenu: View {
+    @Environment(Store.self) private var store
+    let env: EnvSet
+
+    var body: some View {
+        let inUse = env.keyInUse
+        Menu {
+            ForEach(env.keys) { key in
+                Toggle(key.name, isOn: Binding(get: { inUse?.id == key.id }, set: { _ in store.useKey(key.id) }))
+            }
+            if env.hasUnsavedKey {
+                if !env.keys.isEmpty { Divider() }
+                Button("Save Key in Use as \(env.nextKeyName)") { store.saveKey(named: env.nextKeyName) }
+            }
+            if let inUse {
+                Divider()
+                Button("Delete \(inUse.name)") { store.deleteKey(inUse.id) }
+            }
+            Divider()
+            Button("Manage Keys…") { store.sheet = .keys }
+        } label: {
+            Label(inUse?.name ?? (env.hasUnsavedKey ? "Unsaved key" : "No key"), systemImage: "key.fill")
+                .labelStyle(.titleAndIcon)
+                .lineLimit(1)
+        }
+        .fixedSize()
+        .help("API key in use for \(env.name) — switch between saved keys for the same API")
     }
 }

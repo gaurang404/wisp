@@ -28,9 +28,10 @@ final class Store {
     var schemaError: String?
 
     enum Sheet: Identifiable {
-        case code, importer, environments, jwt(String), graphQLBuilder
+        case code, importer, environments, keys, jwt(String), graphQLBuilder
         var id: String {
             switch self {
+            case .keys: "keys"
             case .graphQLBuilder: "graphQLBuilder"
             case .code: "code"
             case .importer: "importer"
@@ -72,8 +73,12 @@ final class Store {
     }
 
     static let fileURL: URL = {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        var dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Wisp", isDirectory: true)
+        #if DEBUG
+        // Screenshots and smoke tests must never touch real data (see Secrets.service).
+        if let path = ProcessInfo.processInfo.environment["WISP_DATA_DIR"] { dir = URL(fileURLWithPath: path, isDirectory: true) }
+        #endif
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("state.json")
     }()
@@ -293,6 +298,7 @@ final class Store {
             spec.url = literal.hasPrefix(existing) ? "{{baseUrl}}" + literal.dropFirst(existing.count) : literal
             variables.removeAll { $0.key == "baseUrl" }
         }
+        let before = envs[i]
         for v in variables {
             if let j = envs[i].vars.firstIndex(where: { $0.key == v.key }) {
                 envs[i].vars[j].value = v.value
@@ -307,11 +313,56 @@ final class Store {
             envs[i].headers.append(h)
         }
         activeEnvID = envs[i].id
+        // A different key for the same API: keep the previous one as a named key instead of overwriting it.
+        let old = before.credentials
+        let replaced = old.contains { name, value in envs[i].credentials[name].map { $0 != value } ?? false }
+        var savedAs: String?
+        if replaced {
+            if before.keyInUse == nil { envs[i].keys.append(SavedKey(name: envs[i].nextKeyName, credentials: old)) }
+            if envs[i].keyInUse == nil {
+                let key = SavedKey(name: envs[i].nextKeyName, credentials: envs[i].credentials)
+                envs[i].keys.append(key)
+                savedAs = key.name
+            }
+        }
         if let k = saved.firstIndex(where: { $0.id == current.id }) { saved[k] = spec }
         current = spec
         scrub(r.replacements)
         persist()
-        flash("Saved for \(envs[i].name) — secrets are in the Keychain")
+        if let savedAs {
+            flash("Saved as \(savedAs) for \(envs[i].name) — switch keys from the toolbar")
+        } else {
+            flash("Saved for \(envs[i].name) — secrets are in the Keychain")
+        }
+    }
+
+    // MARK: - Named keys (several credentials for the same API)
+
+    /// Saves the credentials in use as a named key of the active environment.
+    func saveKey(named name: String) {
+        guard let i = envs.firstIndex(where: { $0.id == activeEnvID }), !envs[i].credentials.isEmpty else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let key = SavedKey(name: trimmed.isEmpty ? envs[i].nextKeyName : trimmed, credentials: envs[i].credentials)
+        envs[i].keys.append(key)
+        persist()
+        flash("Saved key \(key.name)")
+    }
+
+    func useKey(_ id: UUID, in envID: UUID? = nil) {
+        guard let i = envs.firstIndex(where: { $0.id == (envID ?? activeEnvID) }),
+              let key = envs[i].keys.first(where: { $0.id == id }) else { return }
+        envs[i].use(key)
+        persist()
+        flash("Using \(key.name)")
+    }
+
+    /// Deletes the key from Wisp (and the Keychain, on the next write).
+    func deleteKey(_ id: UUID, in envID: UUID? = nil) {
+        guard let i = envs.firstIndex(where: { $0.id == (envID ?? activeEnvID) }),
+              let key = envs[i].keys.first(where: { $0.id == id }) else { return }
+        envs[i].deleteKey(id)
+        persist()
+        flash("Deleted \(key.name)" + (envs[i].keyInUse.map { " — now using \($0.name)" } ?? ""))
     }
 
     /// "Use this auth for every request to this API": moves the request's auth to the environment.
@@ -738,6 +789,13 @@ final class Store {
                 blob.values[envsOnDisk[e].vars[v].id.uuidString] = envsOnDisk[e].vars[v].value
                 envsOnDisk[e].vars[v].value = ""
             }
+            // Saved keys are always secret.
+            for k in envsOnDisk[e].keys.indices {
+                for v in envsOnDisk[e].keys[k].values.indices where !envsOnDisk[e].keys[k].values[v].value.isEmpty {
+                    blob.values[envsOnDisk[e].keys[k].values[v].id.uuidString] = envsOnDisk[e].keys[k].values[v].value
+                    envsOnDisk[e].keys[k].values[v].value = ""
+                }
+            }
         }
         var tokensOnDisk: [String: OAuthToken] = [:]
         if keychainReadFailed || keychainPending {
@@ -801,6 +859,11 @@ final class Store {
             for e in envs.indices {
                 for v in envs[e].vars.indices where envs[e].vars[v].secret && envs[e].vars[v].value.isEmpty {
                     if let value = blob.values[envs[e].vars[v].id.uuidString] { envs[e].vars[v].value = value }
+                }
+                for k in envs[e].keys.indices {
+                    for v in envs[e].keys[k].values.indices where envs[e].keys[k].values[v].value.isEmpty {
+                        if let value = blob.values[envs[e].keys[k].values[v].id.uuidString] { envs[e].keys[k].values[v].value = value }
+                    }
                 }
             }
         case .notFound:

@@ -48,7 +48,7 @@ xcrun notarytool store-credentials wisp-notary        # once
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=wisp-notary ./build.sh
 ```
 
-After a release, update `version` and `sha256` in `packaging/wisp.rb` (Homebrew cask) from `SHA256SUMS.txt`.
+After a release, update `version` and `sha256` in `packaging/wisp.rb` (Homebrew cask) from `SHA256SUMS.txt`, and the version shown on the website (`wisp-site/index.html`, `fineprint`).
 
 ## Tests
 
@@ -77,7 +77,9 @@ WISP_WINDOW=1440x900 WISP_DEMO_OPEN="List users" WISP_SNAPSHOT=/tmp/hero.png WIS
 swift scripts/frame-screenshot.swift /tmp/hero.png - docs/images/hero-dark.jpg
 ```
 
-Sheets (Query Builder, Code) are written next to the window capture as `*-sheet.png`; pass that as the second argument to composite it. Any screenshot can also be replaced with a CleanShot capture of the same scene.
+Debug runs with `WISP_DATA_DIR=<dir>` keep state there and use a separate Keychain item (service `build.wisp.app.debug`, account = that dir; remove with `security delete-generic-password -s build.wisp.app.debug -a <dir>`), so snapshots never touch your real data — use it for any scene that saves. A debug binary needs `DYLD_FRAMEWORK_PATH=$(swift build --show-bin-path)` to find Sparkle. Named keys scene: `WISP_DEMO_KEYS_URL=https://gaurang404.github.io/wisp-demo/api/v1/account.json WISP_DEMO_SHEET=keys`. `WISP_DARK` / `WISP_LIGHT` force the appearance.
+
+Sheets (Query Builder, Code, Keys) are written next to the window capture as `*-sheet.png`; pass that as the second argument to composite it. Any screenshot can also be replaced with a CleanShot capture of the same scene.
 
 ## Where things are
 

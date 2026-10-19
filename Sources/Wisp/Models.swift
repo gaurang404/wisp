@@ -114,10 +114,80 @@ struct EnvSet: Identifiable, Codable, Hashable {
     var auth = Auth()
     /// Added to requests that don't already set the same header.
     var headers: [KeyValue] = []
+    /// Named credentials for this API (e.g. "Test account", "Prod key"). Using one copies its values into `vars`.
+    var keys: [SavedKey] = []
 
     /// Host of this environment's {{baseUrl}}, used to pick the environment for a pasted URL.
     var host: String? {
         vars.first { $0.key == "baseUrl" && $0.enabled }.flatMap { URL(string: $0.value)?.host?.lowercased() }
+    }
+
+    /// Secret variables currently in use (name → value) — what a saved key captures.
+    var credentials: [String: String] {
+        Dictionary(vars.filter { $0.secret && $0.enabled && !$0.key.isEmpty && !$0.value.isEmpty }.map { ($0.key, $0.value) },
+                   uniquingKeysWith: { _, b in b })
+    }
+
+    /// The saved key whose values are the ones in use (the most specific, if several match); nil = none / unsaved.
+    var keyInUse: SavedKey? {
+        let current = credentials
+        guard !current.isEmpty else { return nil }
+        return keys.filter { k in !k.credentials.isEmpty && k.credentials.allSatisfy { current[$0.key] == $0.value } }
+            .max { $0.credentials.count < $1.credentials.count }
+    }
+
+    /// Credentials are set but don't match any saved key (e.g. edited by hand).
+    var hasUnsavedKey: Bool { !credentials.isEmpty && keyInUse == nil }
+
+    /// "Key 1", "Key 2", … — the first name not taken.
+    var nextKeyName: String {
+        var n = keys.count + 1
+        while keys.contains(where: { $0.name == "Key \(n)" }) { n += 1 }
+        return "Key \(n)"
+    }
+
+    /// Copies the key's values into the environment's secret variables.
+    mutating func use(_ key: SavedKey) {
+        for (name, value) in key.credentials {
+            if let i = vars.firstIndex(where: { $0.key == name }) {
+                vars[i].value = value
+                vars[i].secret = true
+                vars[i].enabled = true
+            } else {
+                vars.append(KeyValue(key: name, value: value, secret: true))
+            }
+        }
+    }
+
+    /// Removes a saved key. If it was in use, switches to another saved key, or blanks its values so it's never sent again.
+    mutating func deleteKey(_ id: UUID) {
+        guard let key = keys.first(where: { $0.id == id }) else { return }
+        let wasInUse = keyInUse?.id == id
+        keys.removeAll { $0.id == id }
+        guard wasInUse else { return }
+        if let next = keys.first {
+            use(next)
+        } else {
+            for i in vars.indices where key.credentials[vars[i].key] != nil { vars[i].value = "" }
+        }
+    }
+}
+
+/// A named set of credential values for one environment. Values are always stored in the Keychain.
+struct SavedKey: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var name = ""
+    var values: [KeyValue] = []
+
+    var credentials: [String: String] {
+        Dictionary(values.filter { $0.enabled && !$0.key.isEmpty && !$0.value.isEmpty }.map { ($0.key, $0.value) },
+                   uniquingKeysWith: { _, b in b })
+    }
+
+    init(id: UUID = UUID(), name: String, credentials: [String: String]) {
+        self.id = id
+        self.name = name
+        values = credentials.sorted { $0.key < $1.key }.map { KeyValue(key: $0.key, value: $0.value, secret: true) }
     }
 }
 
@@ -216,6 +286,16 @@ extension EnvSet {
         vars = c.value(.vars, [])
         auth = c.value(.auth, Auth())
         headers = c.value(.headers, [])
+        keys = c.value(.keys, LossyArray<SavedKey>(items: [])).items
+    }
+}
+
+extension SavedKey {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, UUID())
+        name = c.value(.name, "Key")
+        values = c.value(.values, [])
     }
 }
 
