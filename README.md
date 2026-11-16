@@ -16,7 +16,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-14%2B-7B6CFF?style=flat-square" alt="macOS 14+">
   <img src="https://img.shields.io/badge/Apple_silicon_%26_Intel-universal-7B6CFF?style=flat-square" alt="Universal">
-  <img src="https://img.shields.io/badge/download-3_MB-7B6CFF?style=flat-square" alt="3 MB">
   <img src="https://img.shields.io/badge/license-MIT-7B6CFF?style=flat-square" alt="MIT License">
 </p>
 

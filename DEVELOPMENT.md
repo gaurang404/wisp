@@ -51,7 +51,7 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=wisp
 
 The release also bumps the Homebrew cask in [gaurang404/homebrew-tap](https://github.com/gaurang404/homebrew-tap) (`brew install --cask gaurang404/tap/wisp`). If that step fails, the release is already published — update `version` and `sha256` (from `SHA256SUMS.txt`) in the tap's `Casks/wisp.rb` by hand.
 
-After a release, update the version shown on the website (`wisp-site/index.html`, `fineprint`).
+After a release, update the version shown on the website (`wisp-site/index.html`, `fineprint`). If the DMG size changed by more than 0.5 MB, update the site's download figure (stats strip) and `BENCHMARKS.md` — the size is quoted only in those two places.
 
 ## Tests
 
@@ -63,8 +63,17 @@ Network-dependent tests (OAuth loopback, live spec discovery, GraphQL demo API) 
 
 ## Benchmarks
 
+A plain release build reads your real `state.json` and production Keychain item. For launch and memory runs, swap in a release-optimised binary built with `-DDEBUG` so `WISP_DATA_DIR` isolates both (the debug hooks are inert without their env vars; the binary is ~3% larger):
+
 ```sh
-swift scripts/bench-launch.swift build/Wisp.app/Contents/MacOS/Wisp 6       # launch time, memory, idle CPU
+./build.sh && swift build -c release --arch arm64 --arch x86_64 -Xswiftc -DDEBUG
+cp "$(swift build -c release --arch arm64 --arch x86_64 -Xswiftc -DDEBUG --show-bin-path)/Wisp" build/Wisp.app/Contents/MacOS/Wisp
+install_name_tool -add_rpath @executable_path/../Frameworks build/Wisp.app/Contents/MacOS/Wisp && strip -x build/Wisp.app/Contents/MacOS/Wisp
+codesign --force --deep -s - build/Wisp.app
+```
+
+```sh
+WISP_DATA_DIR=$(mktemp -d) swift scripts/bench-launch.swift build/Wisp.app/Contents/MacOS/Wisp 6   # launch time, memory, idle CPU
 WISP_BENCH=1 swift test -c release --filter BenchTests                     # JSON, parsers, import
 # request overhead: serve JSON locally (python3 -m http.server 8765), then
 WISP_BENCH=1 WISP_BENCH_URL=http://127.0.0.1:8765/big.json swift test -c release --filter BenchTests/testRequestLatency
