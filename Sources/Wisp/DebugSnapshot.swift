@@ -37,8 +37,8 @@ extension View {
             if let url = env["WISP_DEMO_URL"] { store.newRequest(); store.current.url = url }
             if env["WISP_DEMO_REUSE"] != nil { store.makeReusable() }
             if let url = env["WISP_DEMO_KEYS_URL"] {   // two named keys for one API (needs WISP_DATA_DIR)
-                for name in ["personal", "team"] {
-                    store.importCurl("curl '\(url)' -H 'Authorization: Bearer sk_demo_\(name)_4f9a2c7e81b3'")
+                for (name, tail) in [("personal", "4f9a2c7e81b3"), ("team", "9d04be61c7a5")] {
+                    store.importCurl("curl '\(url)' -H 'Authorization: Bearer sk_demo_\(name)_\(tail)'")
                     store.makeReusable()
                 }
                 if let i = store.envs.firstIndex(where: { $0.id == store.activeEnvID }), store.envs[i].keys.count == 2 {
@@ -73,7 +73,7 @@ extension View {
             case "import": store.sheet = .importer
             case "jwt": store.sheet = .jwt(env["WISP_DEMO_JWT"] ?? "")
             case "gql": store.sheet = .graphQLBuilder
-            case "keys": store.sheet = .keys
+            case "keys", "env": store.sheet = .environments
             default: break
             }
             try? await Task.sleep(for: .seconds(Double(env["WISP_SNAPSHOT_DELAY"] ?? "4") ?? 4))

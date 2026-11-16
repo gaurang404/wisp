@@ -75,6 +75,23 @@ jobs:
             gh release create "$GITHUB_REF_NAME" $FILES --title "Wisp $V" --generate-notes
           fi
 
+      # Runs after publishing: if it fails, the release is out and only the tap is behind (bump it by hand).
+      - name: Bump Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}   # fine-grained, gaurang404/homebrew-tap only, Contents: read & write
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then echo "::warning::TAP_TOKEN not set — Homebrew tap not bumped"; exit 0; fi
+          V="${GITHUB_REF_NAME#v}"
+          SHA=$(awk -v f="Wisp-$V.dmg" '$2 == f { print $1 }' build/SHA256SUMS.txt)
+          [ -n "$SHA" ] || { echo "::error::no sha256 for Wisp-$V.dmg"; exit 1; }
+          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/gaurang404/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          perl -pi -e "s/^  version \".*\"/  version \"$V\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/wisp.rb
+          if git diff --quiet; then echo "Tap already at $V"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -am "wisp $V"
+          git push origin HEAD
+
       - name: Clean up keychain and keys
         if: always()
         run: |

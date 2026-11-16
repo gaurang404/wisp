@@ -110,7 +110,7 @@ struct SidebarView: View {
             }
 
             Section {
-                ForEach(store.history.filter { matches($0.request) }.prefix(100)) { h in
+                ForEach(store.envHistory.filter { matches($0.request) }.prefix(100)) { h in
                     HStack(spacing: 6) {
                         MethodLabel(method: h.request.method)
                         VStack(alignment: .leading, spacing: 2) {
@@ -120,6 +120,7 @@ struct SidebarView: View {
                                 Text(h.status.map(String.init) ?? "ERR")
                                 Text("·")
                                 Text(shortAgo(h.date))
+                                if let key = h.keyName { Text("· " + key).lineLimit(1) }
                                 Text(hostOf(h.request.url)).lineLimit(1).truncationMode(.tail)
                             }
                             .font(.system(size: 10.5))
@@ -135,8 +136,9 @@ struct SidebarView: View {
             } header: {
                 HStack {
                     Text("History")
+                    if let env = store.activeEnv { Text("· " + env.name).lineLimit(1).foregroundStyle(.tertiary) }
                     Spacer()
-                    if !store.history.isEmpty {
+                    if !store.envHistory.isEmpty {
                         Button("Clear") { store.clearHistory() }
                             .buttonStyle(.borderless)
                             .font(.caption)

@@ -41,7 +41,8 @@
 
 - **Pasted secrets go to the Keychain.** Tokens in a pasted request move into Keychain-backed variables, scoped to their API's host, and are scrubbed from history.
 - **One environment per API,** selected automatically from the URL's host, with auth and headers inherited by every request.
-- **Several named keys per API** — switch between them from the toolbar and always see which one is in use.
+- **Several named keys per API** — pick the environment and key from one toolbar menu, which always shows the key in use.
+- **History per environment** — opening an environment shows only its own requests, with the key each one used.
 - **OpenAPI import from a docs URL** — Wisp finds the spec behind Swagger UI, Redoc, Scalar or Stoplight pages.
 - **Schema-aware GraphQL** with a query builder for operations, fields and typed inputs.
 - **Failures explained:** auth challenges, HTML error pages and redirect chains are decoded for you.
@@ -53,9 +54,10 @@
 
 - **Secret detection on paste.** Bearer, Basic and API-key headers, auth fields and query keys (`api_key`, `access_token`) are recognised. One click moves them into Keychain-backed variables, rewrites the URL to `{{baseUrl}}/…`, and removes the literal value from history and saved requests.
 - **Host-scoped environments.** Each environment belongs to its API's host. Opening a URL for that host selects it, and requests without their own auth inherit its auth and default headers. They are never attached to requests for another host — including cross-host redirects.
-- **Named keys.** Keep several credentials for the same API — a personal key, a team key, a test account — and switch between them from the toolbar, which always shows the key in use. Pasting a request with a different key for the same host saves it alongside the existing one instead of replacing it. Rename or delete keys in *Manage Keys…*; a deleted key is removed from the Keychain and never sent again.
+- **Named keys.** Keep several credentials for the same API — a personal key, a team key, a test account — and pick one from the environment menu in the toolbar, which always shows the environment and key in use. An environment with a single key shows no key UI at all. Pasting a request with a different key for the same host saves it alongside the existing one instead of replacing it. Add, switch, rename or delete keys in the environment's *Keys* section; editing a 🔒 variable edits the key in use. A deleted key is removed from the Keychain and never sent again.
+- **History per environment.** The sidebar shows the active environment's history only, and *Clear* clears just that environment. A request is filed under the environment it was sent with, and rows show which key was used when there are several. A new, empty request shows which environment and key it will be sent with.
 
-  <img src="docs/images/keys.jpg" alt="Wisp's Manage Keys window with two named keys for the same API, one marked in use">
+  <img src="docs/images/keys.jpg" alt="Wisp's environment editor with two named keys for the same API, one in use">
 
 - **OAuth 2.** Authorization Code with PKCE over a local loopback redirect, Client Credentials and Password grants. Tokens are cached per client and refreshed automatically.
 - **Variables everywhere.** `{{name}}` works in the URL, params, headers, body and auth. Mark a value secret to keep it in the Keychain.
@@ -98,7 +100,7 @@ cURL, HTTPie, JavaScript `fetch`, Python `requests`, Laravel `Http`, PHP cURL, G
 
 ## Also
 
-- Saved requests in folders, searchable history, and Markdown notes on every request
+- Saved requests in folders, searchable per-environment history, and Markdown notes on every request
 - Light and dark appearance
 
 | Shortcut | |
@@ -120,8 +122,11 @@ cURL, HTTPie, JavaScript `fetch`, Python `requests`, Laravel `Http`, PHP cURL, G
 
 ## Install
 
-1. [Download Wisp](https://github.com/gaurang404/wisp/releases/latest/download/Wisp.dmg) and open the disk image.
-2. Drag **Wisp** into your Applications folder and open it.
+```sh
+brew install --cask gaurang404/tap/wisp
+```
+
+Or [download Wisp](https://github.com/gaurang404/wisp/releases/latest/download/Wisp.dmg), open the disk image and drag **Wisp** into your Applications folder.
 
 Requires macOS 14 Sonoma or later, on Apple silicon or Intel.
 

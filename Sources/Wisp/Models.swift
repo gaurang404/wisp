@@ -159,6 +159,24 @@ struct EnvSet: Identifiable, Codable, Hashable {
         }
     }
 
+    /// After a hand edit of the variables, the key that was in use takes the new secret values,
+    /// so a variable and its saved key never drift apart.
+    /// `editing` is the key being edited when the old values match none (e.g. the field was cleared mid-edit).
+    mutating func syncKeyInUse(from old: EnvSet, editing: UUID? = nil) {
+        let now = credentials
+        guard let id = old.keyInUse?.id ?? editing, let k = keys.firstIndex(where: { $0.id == id }),
+              !now.isEmpty, now != old.credentials else { return }
+        let ids = Dictionary(keys[k].values.map { ($0.key, $0.id) }, uniquingKeysWith: { a, _ in a })
+        keys[k].values = now.sorted { $0.key < $1.key }
+            .map { KeyValue(id: ids[$0.key] ?? UUID(), key: $0.key, value: $0.value, secret: true) }
+    }
+
+    /// Names of the secret variables — the slots every key fills.
+    var secretNames: [String] {
+        var seen = Set<String>()
+        return vars.filter { $0.secret && !$0.key.isEmpty && seen.insert($0.key).inserted }.map(\.key)
+    }
+
     /// Removes a saved key. If it was in use, switches to another saved key, or blanks its values so it's never sent again.
     mutating func deleteKey(_ id: UUID) {
         guard let key = keys.first(where: { $0.id == id }) else { return }
@@ -197,6 +215,10 @@ struct HistoryEntry: Identifiable, Codable, Hashable {
     var request: RequestSpec
     var status: Int?
     var duration: TimeInterval
+    /// Environment active when sent; nil = no environment (and entries from before 1.2).
+    var envID: UUID?
+    /// Name of the saved key in use, when the environment had one.
+    var keyName: String?
 }
 
 struct Redirect: Hashable {
@@ -248,6 +270,8 @@ extension HistoryEntry {
         request = try c.decode(RequestSpec.self, forKey: .request)
         status = c.value(.status, nil)
         duration = c.value(.duration, 0)
+        envID = c.value(.envID, nil)
+        keyName = c.value(.keyName, nil)
     }
 }
 

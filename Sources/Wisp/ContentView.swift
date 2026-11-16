@@ -3,6 +3,10 @@ import SwiftUI
 struct ContentView: View {
     @Environment(Store.self) private var store
 
+    private var envLabel: String {
+        store.activeEnv.map { $0.name + ($0.keys.count > 1 ? " · " + ($0.keyInUse?.name ?? "unsaved key") : "") } ?? "No Environment"
+    }
+
     var body: some View {
         @Bindable var store = store
         NavigationSplitView {
@@ -25,22 +29,31 @@ struct ContentView: View {
                     Button("No Environment") { store.activeEnvID = nil }
                     Divider()
                     ForEach(store.envs) { env in
-                        Button(env.name) { store.activeEnvID = env.id }
+                        if env.keys.count > 1 {
+                            // Several keys for this API: pick the environment and the key in one go.
+                            Menu(env.name) {
+                                ForEach(env.keys) { key in
+                                    Toggle(key.name, isOn: Binding(
+                                        get: { store.activeEnvID == env.id && env.keyInUse?.id == key.id },
+                                        set: { _ in store.activeEnvID = env.id; store.useKey(key.id, in: env.id) }
+                                    ))
+                                }
+                            }
+                        } else {
+                            Button(env.name) { store.activeEnvID = env.id }
+                        }
                     }
                     Divider()
                     Button("Manage Environments…") { store.sheet = .environments }
                 } label: {
-                    let name = store.envs.first { $0.id == store.activeEnvID }?.name
                     HStack(spacing: 6) {
-                        Circle().fill(name == nil ? Color.secondary.opacity(0.4) : .green).frame(width: 7, height: 7)
-                        Text(name ?? "No Environment").lineLimit(1)
+                        Circle().fill(store.activeEnv == nil ? Color.secondary.opacity(0.4) : .green).frame(width: 7, height: 7)
+                        Text(envLabel).lineLimit(1)
                     }
                 }
                 .fixedSize()
-                .help("Active environment — use {{name}} anywhere in a request")
-                if let env = store.activeEnv, !env.keys.isEmpty || !env.credentials.isEmpty {
-                    KeyMenu(env: env)
-                }
+                .id(envLabel)   // the toolbar doesn't re-measure a changed label; rebuild it so it can't overlap the next button
+                .help("Active environment and key — use {{name}} anywhere in a request")
                 Button { store.sheet = .code } label: { Label("Code", systemImage: "chevron.left.forwardslash.chevron.right") }
                     .help("Generate code — cURL, fetch, Python, Laravel, Go… (⌥⌘C)")
                 Menu {
@@ -61,7 +74,6 @@ struct ContentView: View {
             case .code: CodeSheet()
             case .importer: ImportSheet()
             case .environments: EnvEditor()
-            case .keys: KeyManager()
             case .jwt(let token): JWTSheet(token: token)
             case .graphQLBuilder: GraphQLBuilderSheet()
             }
@@ -100,6 +112,13 @@ struct URLBar: View {
     @Environment(Store.self) private var store
     @FocusState private var urlFocused: Bool
 
+    /// An empty request says which environment (and key) it will be sent with.
+    private var urlPlaceholder: String {
+        guard let env = store.activeEnv, env.host != nil else { return "https://api.example.com/users  —  or paste a cURL" }
+        let key = env.keys.count > 1 ? env.keyInUse.map { " · " + $0.name } ?? "" : ""
+        return "{{baseUrl}}/path  —  sending with \(env.name)\(key)"
+    }
+
     var body: some View {
         @Bindable var store = store
         VStack(alignment: .leading, spacing: 10) {
@@ -116,7 +135,7 @@ struct URLBar: View {
                     .fontWeight(.semibold)
                 if store.current.auth.kind == .none, let env = store.activeEnv, env.auth.kind != .none,
                    store.applies(env, to: store.current) {
-                    Label("Auth from \(env.name)" + (env.keyInUse.map { " · \($0.name)" } ?? ""), systemImage: "key.fill")
+                    Label("Auth from \(env.name)" + (env.keys.count > 1 ? env.keyInUse.map { " · \($0.name)" } ?? "" : ""), systemImage: "key.fill")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         .help("This request has no auth of its own, so it uses \(env.name)'s \(env.auth.kind.rawValue) auth.")
                 }
@@ -152,7 +171,7 @@ struct URLBar: View {
 
                 Rectangle().fill(Theme.stroke).frame(width: 1, height: 18)
 
-                TextField("https://api.example.com/users  —  or paste a cURL", text: $store.current.url)
+                TextField(urlPlaceholder, text: $store.current.url)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, design: .monospaced))
                     .focused($urlFocused)
@@ -235,36 +254,5 @@ private struct ReuseHint: View {
         .font(.system(size: 12))
         .lineLimit(1)
         .padding(.horizontal, 4)
-    }
-}
-
-/// Which saved key the active environment sends; switch, save or manage keys.
-private struct KeyMenu: View {
-    @Environment(Store.self) private var store
-    let env: EnvSet
-
-    var body: some View {
-        let inUse = env.keyInUse
-        Menu {
-            ForEach(env.keys) { key in
-                Toggle(key.name, isOn: Binding(get: { inUse?.id == key.id }, set: { _ in store.useKey(key.id) }))
-            }
-            if env.hasUnsavedKey {
-                if !env.keys.isEmpty { Divider() }
-                Button("Save Key in Use as \(env.nextKeyName)") { store.saveKey(named: env.nextKeyName) }
-            }
-            if let inUse {
-                Divider()
-                Button("Delete \(inUse.name)") { store.deleteKey(inUse.id) }
-            }
-            Divider()
-            Button("Manage Keys…") { store.sheet = .keys }
-        } label: {
-            Label(inUse?.name ?? (env.hasUnsavedKey ? "Unsaved key" : "No key"), systemImage: "key.fill")
-                .labelStyle(.titleAndIcon)
-                .lineLimit(1)
-        }
-        .fixedSize()
-        .help("API key in use for \(env.name) — switch between saved keys for the same API")
     }
 }

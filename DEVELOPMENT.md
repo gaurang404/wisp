@@ -29,6 +29,7 @@ Repository secrets it needs:
 | `NOTARY_KEY_ID` | That key's ID |
 | `NOTARY_ISSUER_ID` | Issuer ID from App Store Connect → Users and Access → Integrations |
 | `SPARKLE_PRIVATE_KEY` | Update-signing key: the contents of the file from `generate_keys -x` (see below) |
+| `TAP_TOKEN` | Fine-grained token for `gaurang404/homebrew-tap` only, *Contents: read & write*; expires yearly. Optional — without it the tap isn't bumped |
 
 ### Update signing (Sparkle)
 
@@ -48,7 +49,9 @@ xcrun notarytool store-credentials wisp-notary        # once
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=wisp-notary ./build.sh
 ```
 
-After a release, update `version` and `sha256` in `packaging/wisp.rb` (Homebrew cask) from `SHA256SUMS.txt`, and the version shown on the website (`wisp-site/index.html`, `fineprint`).
+The release also bumps the Homebrew cask in [gaurang404/homebrew-tap](https://github.com/gaurang404/homebrew-tap) (`brew install --cask gaurang404/tap/wisp`). If that step fails, the release is already published — update `version` and `sha256` (from `SHA256SUMS.txt`) in the tap's `Casks/wisp.rb` by hand.
+
+After a release, update the version shown on the website (`wisp-site/index.html`, `fineprint`).
 
 ## Tests
 
@@ -77,9 +80,9 @@ WISP_WINDOW=1440x900 WISP_DEMO_OPEN="List users" WISP_SNAPSHOT=/tmp/hero.png WIS
 swift scripts/frame-screenshot.swift /tmp/hero.png - docs/images/hero-dark.jpg
 ```
 
-Debug runs with `WISP_DATA_DIR=<dir>` keep state there and use a separate Keychain item (service `build.wisp.app.debug`, account = that dir; remove with `security delete-generic-password -s build.wisp.app.debug -a <dir>`), so snapshots never touch your real data — use it for any scene that saves. A debug binary needs `DYLD_FRAMEWORK_PATH=$(swift build --show-bin-path)` to find Sparkle. Named keys scene: `WISP_DEMO_KEYS_URL=https://gaurang404.github.io/wisp-demo/api/v1/account.json WISP_DEMO_SHEET=keys`. `WISP_DARK` / `WISP_LIGHT` force the appearance.
+Debug runs with `WISP_DATA_DIR=<dir>` keep state there and use a separate Keychain item (service `build.wisp.app.debug`, account = that dir; remove with `security delete-generic-password -s build.wisp.app.debug -a <dir>`), so snapshots never touch your real data — use it for any scene that saves. A debug binary needs `DYLD_FRAMEWORK_PATH=$(swift build --show-bin-path)` to find Sparkle. Named keys scene (environment editor with two keys): `WISP_DARK=1 WISP_WINDOW=1050x640 WISP_DEMO_KEYS_URL=https://gaurang404.github.io/wisp-demo/api/v1/account.json WISP_DEMO_URL3=<same URL> WISP_DEMO_SHEET=env`. Don't launch the debug binary through `timeout`, `env -i` or other SIP-protected tools that strip `DYLD_*`. `WISP_DARK` / `WISP_LIGHT` force the appearance.
 
-Sheets (Query Builder, Code, Keys) are written next to the window capture as `*-sheet.png`; pass that as the second argument to composite it. Any screenshot can also be replaced with a CleanShot capture of the same scene.
+Sheets (Query Builder, Code, Environments) are written next to the window capture as `*-sheet.png`; pass that as the second argument to composite it. Any screenshot can also be replaced with a CleanShot capture of the same scene.
 
 ## Where things are
 

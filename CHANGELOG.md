@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- **History per environment.** The sidebar shows only the active environment's history; *Clear* clears just that one. Requests are filed under the environment they were sent with, even if you switch while one is in flight. Rows show which key was used when the environment has several. History from earlier versions appears under *No Environment*.
+- **Keys live in the environment.** Add, switch, rename and delete keys in the environment editor; editing a 🔒 variable edits the key in use, so they never drift to "Unsaved key". The toolbar shows one menu (environment · key) and only lists keys when there are two or more. *Manage Keys…* is gone.
+- **New requests show where they'll go.** An empty URL field reads `{{baseUrl}}/path — sending with <environment> · <key>`.
+- **Fixed:** the environment menu in the toolbar could overlap the Code button after its label got longer.
+
 ## 1.1.0
 
 - **Named API keys.** Keep several keys for the same API and switch between them from the toolbar, which shows the key in use. Pasting a request with a different key for the same host keeps the existing key instead of overwriting it. Keys can be renamed and deleted in *Manage Keys…*; deleting one removes it from the Keychain.

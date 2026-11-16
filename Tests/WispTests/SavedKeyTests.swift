@@ -50,4 +50,33 @@ final class SavedKeyTests: XCTestCase {
         XCTAssertEqual(e.name, "Old")
         XCTAssertTrue(e.keys.isEmpty)
     }
+
+    func testEditingSecretVariableEditsKeyInUse() {
+        var e = env("AAA")
+        let a = SavedKey(name: "Main", credentials: ["apiKey": "AAA"])
+        let b = SavedKey(name: "Test", credentials: ["apiKey": "BBB"])
+        e.keys = [a, b]
+        let old = e
+        e.vars[1].value = "AAA2"
+        e.syncKeyInUse(from: old)
+        XCTAssertEqual(e.keyInUse?.id, a.id)              // no drift to "unsaved"
+        XCTAssertEqual(e.keys[0].values.first?.id, a.values.first?.id)   // same Keychain slot
+        XCTAssertEqual(e.keys[1].credentials["apiKey"], "BBB")   // other keys untouched
+    }
+
+    func testPlainVariableEditDoesNotTouchKeys() {
+        var e = env("AAA")
+        e.keys = [SavedKey(name: "Main", credentials: ["apiKey": "AAA"])]
+        let old = e
+        e.vars[0].value = "https://staging.example.com"
+        e.syncKeyInUse(from: old)
+        XCTAssertEqual(e.keys, old.keys)
+    }
+
+    func testOldHistoryDecodesWithoutEnvironment() throws {
+        let json = #"{"request":{"url":"https://x.dev"},"status":200,"duration":0.1}"#
+        let h = try JSONDecoder().decode(HistoryEntry.self, from: Data(json.utf8))
+        XCTAssertNil(h.envID)
+        XCTAssertNil(h.keyName)
+    }
 }

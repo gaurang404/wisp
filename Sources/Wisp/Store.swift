@@ -28,10 +28,9 @@ final class Store {
     var schemaError: String?
 
     enum Sheet: Identifiable {
-        case code, importer, environments, keys, jwt(String), graphQLBuilder
+        case code, importer, environments, jwt(String), graphQLBuilder
         var id: String {
             switch self {
-            case .keys: "keys"
             case .graphQLBuilder: "graphQLBuilder"
             case .code: "code"
             case .importer: "importer"
@@ -105,6 +104,7 @@ final class Store {
         error = nil
         page = 1
         let original = current
+        let sentWith = activeEnv   // history is filed under the environment it was sent with, even if switched mid-flight
         let spec = effective(current)
         let vars = activeVars
         let follow = followRedirects
@@ -131,13 +131,13 @@ final class Store {
                 let r = try await HTTPClient.send(req, followRedirects: follow)
                 guard sendID == id else { return }
                 response = r
-                record(original, status: r.status, duration: r.duration)
+                record(original, env: sentWith, status: r.status, duration: r.duration)
             } catch {
                 guard sendID == id, !Task.isCancelled else { return }
                 if (error as? URLError)?.code == .cancelled { return }
                 self.error = error.localizedDescription
                 response = nil
-                record(original, status: nil, duration: 0)
+                record(original, env: sentWith, status: nil, duration: 0)
             }
         }
     }
@@ -346,6 +346,41 @@ final class Store {
         envs[i].keys.append(key)
         persist()
         flash("Saved key \(key.name)")
+    }
+
+    /// Adds a key for the environment and uses it. The values in use become a key first, so they aren't lost.
+    @discardableResult
+    func addKey(named name: String, credentials: [String: String], in envID: UUID) -> SavedKey? {
+        guard let i = envs.firstIndex(where: { $0.id == envID }) else { return nil }
+        if envs[i].keys.isEmpty && !envs[i].credentials.isEmpty {
+            envs[i].keys.append(SavedKey(name: "Key 1", credentials: envs[i].credentials))
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let key = SavedKey(name: trimmed.isEmpty ? envs[i].nextKeyName : trimmed, credentials: credentials.filter { !$0.value.isEmpty })
+        envs[i].keys.append(key)
+        useKey(key.id, in: envID)
+        return key
+    }
+
+    /// Edits an environment's variables; a 🔒 variable edit also edits the key in use.
+    func setVars(_ vars: [KeyValue], in envID: UUID) {
+        guard let i = envs.firstIndex(where: { $0.id == envID }) else { return }
+        var env = envs[i]
+        let old = env
+        env.vars = vars
+        env.syncKeyInUse(from: old, editing: editingKey[envID])
+        if let id = env.keyInUse?.id ?? old.keyInUse?.id { editingKey[envID] = id }
+        envs[i] = env
+    }
+
+    /// Key being edited per environment — survives a 🔒 field being emptied before the new value is typed.
+    @ObservationIgnored private var editingKey: [UUID: UUID] = [:]
+
+    /// Removes an environment and its history (which could no longer be shown).
+    func deleteEnv(_ id: UUID) {
+        envs.removeAll { $0.id == id }
+        history.removeAll { $0.envID == id }
+        if activeEnvID == id { activeEnvID = nil }
     }
 
     func useKey(_ id: UUID, in envID: UUID? = nil) {
@@ -657,11 +692,19 @@ final class Store {
         status = nil
     }
 
-    private func record(_ spec: RequestSpec, status: Int?, duration: TimeInterval) {
-        history.insert(HistoryEntry(request: scrubbed(spec), status: status, duration: duration), at: 0)
-        if history.count > Self.historyLimit { history.removeLast(history.count - Self.historyLimit) }
+    private func record(_ spec: RequestSpec, env: EnvSet?, status: Int?, duration: TimeInterval) {
+        history.insert(HistoryEntry(request: scrubbed(spec), status: status, duration: duration,
+                                    envID: env?.id, keyName: (env?.keys.count ?? 0) > 1 ? env?.keyInUse?.name : nil), at: 0)
+        // The limit is per environment, so a busy API never pushes out another one's history.
+        if let overflow = history.indices.filter({ history[$0].envID == env?.id }).dropFirst(Self.historyLimit).first {
+            let id = env?.id
+            history = history.enumerated().filter { $0.offset < overflow || $0.element.envID != id }.map(\.element)
+        }
         persist()
     }
+
+    /// History of the active environment (or of requests sent without one).
+    var envHistory: [HistoryEntry] { history.filter { $0.envID == activeEnvID } }
 
     // MARK: - Requests
 
@@ -709,8 +752,9 @@ final class Store {
         persist()
     }
 
+    /// Clears only the active environment's history.
     func clearHistory() {
-        history.removeAll()
+        history.removeAll { $0.envID == activeEnvID }
         persist()
     }
 
@@ -762,7 +806,7 @@ final class Store {
     /// The Keychain couldn't be read this session: never write it (that would replace real secrets with blanks).
     @ObservationIgnored private var keychainReadFailed = false
     /// The Keychain is read in the background after launch; until then it's never written.
-    @ObservationIgnored private var keychainPending = false
+    @ObservationIgnored private(set) var keychainPending = false
     /// The state file exists but couldn't be read: don't overwrite it this session.
     @ObservationIgnored private var persistenceDisabled = false
     @ObservationIgnored private var loaded = false
